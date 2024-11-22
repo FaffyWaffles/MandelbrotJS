@@ -3,9 +3,13 @@
 // Global 'c' value shared between Mandelbrot and Julia sets
 let currentC = { x: 0.0, y: 0.0 };
 
-// Global scale and aspect ratio
+// Canvas dimensions
+const canvasWidth = 800;  // Updated width
+const canvasHeight = 600; // Updated height
+const aspectRatio = canvasWidth / canvasHeight;
+
+// Global scale
 const scale = 1.5;
-const aspectRatio = 1.0; // Assuming square canvas (600x600)
 
 // Function to initialize WebGPU
 async function initWebGPU(canvas) {
@@ -34,7 +38,7 @@ async function initWebGPU(canvas) {
   return { device, context, format };
 }
 
-// WGSL Shader Code
+// WGSL Shader Code with template literals to inject scale and aspectRatio
 const shaderCode = `
 struct VertexOut {
   @builtin(position) position: vec4<f32>,
