@@ -162,10 +162,14 @@ function updateC(newC, sharedState) {
   currentC.y = newC.y;
 
   // Update uniform buffer for Julia set
-  deviceJulia.queue.writeBuffer(sharedState.juliaBuffers.cValueBuffer, 0, new Float32Array([currentC.x, currentC.y]));
+  if (sharedState.juliaBuffers && sharedState.juliaBuffers.cValueBuffer) {
+    sharedState.juliaDevice.queue.writeBuffer(sharedState.juliaBuffers.cValueBuffer, 0, new Float32Array([currentC.x, currentC.y]));
+  }
 
   // Redraw Julia set with new 'c'
-  sharedState.juliaRender();
+  if (sharedState.juliaRender) {
+    sharedState.juliaRender();
+  }
 
   // Update markers on both canvases
   drawMarker(document.getElementById('mandelbrotMarkerCanvas'), currentC);
@@ -183,7 +187,7 @@ let deviceJulia;
 async function drawFractal(canvas, markerCanvas, type, sharedState) {
   const { device, context, format } = await initWebGPU(canvas);
 
-  // Store device reference for Julia set
+  // Store device reference
   if (type === 'julia') {
     deviceJulia = device;
   }
@@ -234,13 +238,6 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
     ],
   });
 
-  // Store buffer references in sharedState
-  if (type === 'julia') {
-    sharedState.juliaBuffers = {
-      cValueBuffer: cValueBuffer,
-    };
-  }
-
   // Initial uniform values
   const initialIterations = 200;
   device.queue.writeBuffer(iterationBuffer, 0, new Uint32Array([initialIterations]));
@@ -285,72 +282,24 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
   // Initial render
   render();
 
-  // Handle iteration slider changes (only set once for Mandelbrot)
-  if (type === 'mandelbrot') {
-    const iterationsSlider = document.getElementById('iterations');
-    const iterationValueSpan = document.getElementById('iterationValue');
-
-    iterationsSlider.addEventListener('input', () => {
-      const iterations = parseInt(iterationsSlider.value);
-      iterationValueSpan.textContent = iterations;
-      device.queue.writeBuffer(iterationBuffer, 0, new Uint32Array([iterations]));
-      render();
-    });
-  }
-
-  // If Julia set, add draggable point
+  // Store references in sharedState for synchronization
   if (type === 'julia') {
-    const cRealSpan = document.getElementById('cReal');
-    const cImagSpan = document.getElementById('cImag');
-
-    let isDragging = false;
-
-    canvas.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      updateCFromJulia(e, device, sharedState);
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        updateCFromJulia(e, device, sharedState);
-      }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-      isDragging = false;
-    });
-  }
-
-  // Add drag interaction for Mandelbrot set to update 'c'
-  if (type === 'mandelbrot') {
-    let isDragging = false;
-
-    canvas.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      updateCFromMandelbrot(e, device, sharedState);
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        updateCFromMandelbrot(e, device, sharedState);
-      }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-      isDragging = false;
-    });
+    sharedState.juliaBuffers = {
+      iterationBuffer: iterationBuffer,
+      cValueBuffer: cValueBuffer,
+    };
+    sharedState.juliaDevice = device;
+    sharedState.juliaRender = render;
+  } else if (type === 'mandelbrot') {
+    sharedState.mandelbrotBuffers = {
+      iterationBuffer: iterationBuffer,
+    };
+    sharedState.mandelbrotDevice = device;
+    sharedState.mandelbrotRender = render;
   }
 
   // Function to update 'c' from Julia set interactions
-  function updateCFromJulia(e, device, sharedState) {
+  function updateCFromJulia(e) {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -364,7 +313,7 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
   }
 
   // Function to update 'c' from Mandelbrot set interactions
-  function updateCFromMandelbrot(e, device, sharedState) {
+  function updateCFromMandelbrot(e) {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
@@ -377,16 +326,40 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
     updateC({ x: x, y: y }, sharedState);
   }
 
+  // Add draggable point interactions
+  if (type === 'julia' || type === 'mandelbrot') {
+    let isDragging = false;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      if (type === 'julia') {
+        updateCFromJulia(e);
+      } else if (type === 'mandelbrot') {
+        updateCFromMandelbrot(e);
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        if (type === 'julia') {
+          updateCFromJulia(e);
+        } else if (type === 'mandelbrot') {
+          updateCFromMandelbrot(e);
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
+  }
+
   // Initial marker drawing
   drawMarker(markerCanvas, currentC);
-
-  // Store references in sharedState for synchronization
-  if (type === 'julia') {
-    sharedState.juliaBuffers = {
-      cValueBuffer: cValueBuffer,
-    };
-    sharedState.juliaRender = render;
-  }
 }
 
 // Function to update 'c' and synchronize markers and Julia set
@@ -395,10 +368,14 @@ function updateC(newC, sharedState) {
   currentC.y = newC.y;
 
   // Update uniform buffer for Julia set
-  deviceJulia.queue.writeBuffer(sharedState.juliaBuffers.cValueBuffer, 0, new Float32Array([currentC.x, currentC.y]));
+  if (sharedState.juliaBuffers && sharedState.juliaBuffers.cValueBuffer) {
+    sharedState.juliaDevice.queue.writeBuffer(sharedState.juliaBuffers.cValueBuffer, 0, new Float32Array([currentC.x, currentC.y]));
+  }
 
   // Redraw Julia set with new 'c'
-  sharedState.juliaRender();
+  if (sharedState.juliaRender) {
+    sharedState.juliaRender();
+  }
 
   // Update markers on both canvases
   drawMarker(document.getElementById('mandelbrotMarkerCanvas'), currentC);
@@ -410,12 +387,37 @@ function updateC(newC, sharedState) {
 }
 
 // Initialize both fractals after DOM is loaded
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   const sharedState = {};
 
   // Initialize Mandelbrot Set
-  drawFractal(document.getElementById('mandelbrotCanvas'), document.getElementById('mandelbrotMarkerCanvas'), 'mandelbrot', sharedState);
+  await drawFractal(document.getElementById('mandelbrotCanvas'), document.getElementById('mandelbrotMarkerCanvas'), 'mandelbrot', sharedState);
 
   // Initialize Julia Set
-  drawFractal(document.getElementById('juliaCanvas'), document.getElementById('juliaMarkerCanvas'), 'julia', sharedState);
+  await drawFractal(document.getElementById('juliaCanvas'), document.getElementById('juliaMarkerCanvas'), 'julia', sharedState);
+
+  // Setup iteration slider to update both Mandelbrot and Julia sets
+  const iterationsSlider = document.getElementById('iterations');
+  const iterationValueSpan = document.getElementById('iterationValue');
+
+  iterationsSlider.addEventListener('input', () => {
+    const iterations = parseInt(iterationsSlider.value);
+    iterationValueSpan.textContent = iterations;
+
+    // Update Mandelbrot iteration buffer
+    if (sharedState.mandelbrotBuffers && sharedState.mandelbrotBuffers.iterationBuffer) {
+      sharedState.mandelbrotDevice.queue.writeBuffer(sharedState.mandelbrotBuffers.iterationBuffer, 0, new Uint32Array([iterations]));
+      if (sharedState.mandelbrotRender) {
+        sharedState.mandelbrotRender();
+      }
+    }
+
+    // Update Julia iteration buffer
+    if (sharedState.juliaBuffers && sharedState.juliaBuffers.iterationBuffer) {
+      sharedState.juliaDevice.queue.writeBuffer(sharedState.juliaBuffers.iterationBuffer, 0, new Uint32Array([iterations]));
+      if (sharedState.juliaRender) {
+        sharedState.juliaRender();
+      }
+    }
+  });
 });
