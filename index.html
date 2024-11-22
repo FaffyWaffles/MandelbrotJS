@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mandelbrot and Julia Sets with WebGPU</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <h1>Mandelbrot and Julia Sets Visualization</h1>
+  <div class="container">
+    <div class="fractal-container">
+      <h2>Mandelbrot Set</h2>
+      <canvas id="mandelbrotCanvas" width="800" height="800"></canvas>
+    </div>
+    <div class="fractal-container">
+      <h2>Julia Set</h2>
+      <canvas id="juliaCanvas" width="800" height="800"></canvas>
+    </div>
+  </div>
+  <div class="controls">
+    <label for="iterations">Iterations: </label>
+    <input type="range" id="iterations" name="iterations" min="50" max="1000" value="200">
+    <span id="iterationValue">200</span>
+  </div>
+  <div class="info">
+    <p>Drag on the Julia Set canvas to change the constant <strong>c</strong>.</p>
+    <p>Current c: (<span id="cReal">0.00</span>, <span id="cImag">0.00</span>)</p>
+  </div>
+  <script src="Mandelbrot.js"></script>
+</body>
+</html>
