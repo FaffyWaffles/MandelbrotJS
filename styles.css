@@ -15,7 +15,7 @@ body {
     display: flex;
     justify-content: center;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 40px;
     margin-top: 20px;
   }
   
@@ -25,11 +25,32 @@ body {
     align-items: center;
   }
   
-  canvas {
+  .canvas-container {
+    position: relative;
+    width: 600px;
+    height: 600px;
+  }
+  
+  .canvas-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  
+  canvas#mandelbrotCanvas,
+  canvas#juliaCanvas {
     border: 2px solid #ffffff;
     border-radius: 4px;
     background-color: #000000;
     cursor: crosshair;
+  }
+  
+  canvas#mandelbrotMarkerCanvas,
+  canvas#juliaMarkerCanvas {
+    /* Transparent background */
+    background-color: rgba(0, 0, 0, 0);
+    /* Ensure markers are above the fractal */
+    pointer-events: none; /* Allows clicks to pass through to the main canvas */
   }
   
   .controls {
