@@ -11,35 +11,41 @@
     <!-- Mandelbrot Set Container -->
     <div class="fractal-container">
       <h2>Mandelbrot Set</h2>
-      <div class="canvas-container">
-        <canvas id="mandelbrotCanvas" width="800" height="600"></canvas>
-        <canvas id="mandelbrotMarkerCanvas" width="800" height="600"></canvas>
+      <div class="canvas-wrapper">
+        <input type="range" class="zoom-slider" id="mandelbrotZoom" min="1" max="100" value="1">
+        <div class="canvas-container">
+          <canvas id="mandelbrotCanvas" width="800" height="600"></canvas>
+          <canvas id="mandelbrotMarkerCanvas" width="800" height="600"></canvas>
+        </div>
       </div>
     </div>
 
     <!-- Julia Set Container -->
     <div class="fractal-container">
-      <h2>Julia Set</h2>
-      <div class="canvas-container">
-        <canvas id="juliaCanvas" width="800" height="600"></canvas>
-        <canvas id="juliaMarkerCanvas" width="800" height="600"></canvas>
+        <h2>Julia Set</h2>
+        <div class="canvas-wrapper julia-wrapper">
+          <div class="canvas-container">
+            <canvas id="juliaCanvas" width="800" height="600"></canvas>
+            <canvas id="juliaMarkerCanvas" width="800" height="600"></canvas>
+          </div>
+          <input type="range" class="zoom-slider" id="juliaZoom" min="1" max="100" value="1">
+        </div>
       </div>
     </div>
-  </div>
 
   <div class="controls">
     <label for="iterations">Iterations: </label>
     <input type="range" id="iterations" name="iterations" min="1" max="1000" value="200">
     <span id="iterationValue">200</span>
     
-    <!-- Add this new control -->
     <label for="showOrbits">Show Orbits: </label>
     <input type="checkbox" id="showOrbits" name="showOrbits">
-</div>
+  </div>
 
   <div class="info">
     <p>Drag on either canvas to change the constant <strong>c</strong>.</p>
     <p>Current c: (<span id="cReal">0.00</span>, <span id="cImag">0.00</span>)</p>
+    <p>Zoom levels: M:<span id="mandelbrotZoomValue">1.00</span>x J:<span id="juliaZoomValue">1.00</span>x</p>
   </div>
 
   <script src="Mandelbrot.js"></script>
