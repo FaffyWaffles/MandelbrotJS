@@ -73,9 +73,16 @@ fn mod_func(x: f32, y: f32) -> f32 {
 
 @fragment
 fn fsMain(input: VertexOut) -> @location(0) vec4<f32> {
-  // Define the view window
-  let x = input.fragCoord.x * ${scale} * ${aspectRatio};
-  let y = input.fragCoord.y * ${scale};
+  let coords = vec2<f32>(
+    input.fragCoord.x * ${scale} * ${aspectRatio},
+    input.fragCoord.y * ${scale}
+  );
+
+  var x = coords.x;
+  if (mode == 0u) {
+    x = x - 0.5;
+  }
+  let y = coords.y;
 
   var z = vec2<f32>(0.0, 0.0);
   var c = vec2<f32>(0.0, 0.0);

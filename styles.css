@@ -1,79 +1,80 @@
 body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  background-color: #1e1e1e;
-  color: #ffffff;
-  margin: 0;
-  padding: 20px;
-}
-
-h1 {
-  margin-bottom: 10px;
-}
-
-.container {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 40px; /* Maintains the 40px gap between fractal containers */
-  margin-top: 20px;
-}
-
-.fractal-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.canvas-container {
-  position: relative;
-  width: 800px;  /* Updated width */
-  height: 600px; /* Updated height */
-}
-
-.canvas-container canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-canvas#mandelbrotCanvas,
-canvas#juliaCanvas {
-  border: 2px solid #ffffff;
-  border-radius: 4px;
-  background-color: #000000;
-  cursor: crosshair;
-}
-
-canvas#mandelbrotMarkerCanvas,
-canvas#juliaMarkerCanvas {
-  /* Transparent background */
-  background-color: rgba(0, 0, 0, 0);
-  /* Ensure markers are above the fractal */
-  pointer-events: none; /* Allows clicks to pass through to the main canvas */
-}
-
-.controls {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 20px; /* Increased gap to accommodate new checkbox */
-}
-
-.controls label {
-  font-weight: bold;
-}
-
-.controls input[type="range"] {
-  width: 300px;
-}
-
-.info {
-  margin-top: 10px;
-}
-
-.info p {
-  margin: 5px 0;
-  font-size: 14px;
-}
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background-color: #1e1e1e;
+    color: #ffffff;
+    margin: 0;
+    padding: 20px;
+  }
+  
+  h1 {
+    margin-bottom: 10px;
+  }
+  
+  .container {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 40px; /* Maintains the 40px gap between fractal containers */
+    margin-top: 20px;
+  }
+  
+  .fractal-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .canvas-container {
+    position: relative;
+    width: 800px;  /* Updated width */
+    height: 600px; /* Updated height */
+  }
+  
+  .canvas-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  
+  canvas#mandelbrotCanvas,
+  canvas#juliaCanvas {
+    border: 2px solid #ffffff;
+    border-radius: 4px;
+    background-color: #000000;
+    cursor: crosshair;
+  }
+  
+  canvas#mandelbrotMarkerCanvas,
+  canvas#juliaMarkerCanvas {
+    /* Transparent background */
+    background-color: rgba(0, 0, 0, 0);
+    /* Ensure markers are above the fractal */
+    pointer-events: none; /* Allows clicks to pass through to the main canvas */
+  }
+  
+  .controls {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px; /* Increased gap to accommodate new checkbox */
+  }
+  
+  .controls label {
+    font-weight: bold;
+  }
+  
+  .controls input[type="range"] {
+    width: 300px;
+  }
+  
+  .info {
+    margin-top: 10px;
+  }
+  
+  .info p {
+    margin: 5px 0;
+    font-size: 14px;
+  }
+  
