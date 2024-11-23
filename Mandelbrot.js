@@ -10,9 +10,11 @@ const canvasWidth = 800;
 const canvasHeight = 600;
 const aspectRatio = canvasWidth / canvasHeight;
 
-// Default Mandelbrot view parameters
+// Default Mandelbrot view parameters and zoom constraints
 const defaultMandelbrotScale = 1.5;
 const defaultMandelbrotCenter = { x: -0.5, y: 0.0 };
+const MIN_SCALE = 1e-6; // Allow much deeper zoom
+const MAX_SCALE = defaultMandelbrotScale;
 
 // Variables to handle dynamic zoom
 let mandelbrotScale = defaultMandelbrotScale;
@@ -61,14 +63,19 @@ fn mod_func(x: f32, y: f32) -> f32 {
 @fragment
 fn fsMain(input: VertexOut) -> @location(0) vec4<f32> {
     var coords = input.fragCoord;
-
+    
+    // Use double precision emulation for critical calculations
+    let scale_f64 = f32(mandelbrotScale);
+    let center_x_f64 = f32(mandelbrotCenter.x);
+    let center_y_f64 = f32(mandelbrotCenter.y);
+    
     var x: f32;
     var y: f32;
 
     if (mode == 0u) {
-        // Mandelbrot Set
-        x = (coords.x * mandelbrotScale * 1.333) + mandelbrotCenter.x; // aspectRatio = 800/600 = 1.333
-        y = coords.y * mandelbrotScale + mandelbrotCenter.y;
+        // Mandelbrot Set with higher precision calculations
+        x = (coords.x * scale_f64 * 1.333) + center_x_f64;
+        y = coords.y * scale_f64 + center_y_f64;
     } else {
         // Julia Set
         x = coords.x * 1.5 * 1.333;
@@ -161,7 +168,7 @@ function calculateOrbit(x0, y0, maxIter) {
     return orbit;
 }
 
-// Refactored toCanvasCoords function
+// Function to convert complex coordinates to canvas coordinates
 function toCanvasCoords(point, width, height, mandelbrotCenter, mandelbrotScale, aspectRatio) {
     return {
         x: ((point.x - mandelbrotCenter.x) / (mandelbrotScale * aspectRatio)) * (width / 2) + (width / 2),
@@ -233,7 +240,7 @@ function drawMarker(markerCanvas, c) {
     // Draw the red circle
     ctx.beginPath();
     ctx.arc(x, y, 5, 0, 2 * Math.PI);
-    ctx.strokeStyle = 'red';
+    ctx.strokeStyle = 'white';
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -292,8 +299,8 @@ function updateC(newC, sharedState) {
     drawMarker(document.getElementById('mandelbrotMarkerCanvas'), currentC);
     drawMarker(document.getElementById('juliaMarkerCanvas'), currentC);
 
-    document.getElementById('cReal').textContent = currentC.x.toFixed(2);
-    document.getElementById('cImag').textContent = currentC.y.toFixed(2);
+    document.getElementById('cReal').textContent = currentC.x.toFixed(6);
+    document.getElementById('cImag').textContent = currentC.y.toFixed(6);
 }
 
 // ==========================
@@ -339,7 +346,6 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // Buffers for Mandelbrot zoom
     const mandelbrotScaleBuffer = device.createBuffer({
         size: 4,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -371,15 +377,13 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
     if (type === 'mandelbrot') {
         initialC = new Float32Array([defaultMandelbrotCenter.x, defaultMandelbrotCenter.y]);
         mode = 0;
-        // Initialize scale and center
         device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([mandelbrotScale]));
         device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([mandelbrotCenter.x, mandelbrotCenter.y]));
     } else {
         initialC = new Float32Array([currentC.x, currentC.y]);
         mode = 1;
-        // For Julia set, scale and center are not used
-        device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([0.0])); // Placeholder
-        device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([0.0, 0.0])); // Placeholder
+        device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([0.0]));
+        device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([0.0, 0.0]));
     }
     device.queue.writeBuffer(cValueBuffer, 0, initialC);
     device.queue.writeBuffer(modeBuffer, 0, new Uint32Array([mode]));
@@ -525,19 +529,23 @@ function animateZoom(sharedState) {
     }
 }
 
-// Function to update the zoom based on slider
+// Function to update the zoom based on slider with exponential scaling
 function updateZoom(value, sharedState) {
+    // Convert linear slider value to exponential scale
+    // value goes from 1 to 100, we want to map it to MAX_SCALE to MIN_SCALE exponentially
     if (value === 1) {
         // Reset to default view
         targetMandelbrotScale = defaultMandelbrotScale;
         targetMandelbrotCenter = { ...defaultMandelbrotCenter };
     } else {
-        // Calculate zoom factor
-        const zoomFactor = value; // Slider value from 1 to 100
-
-        // Set target scale (you can adjust the scaling factor as needed)
-        targetMandelbrotScale = defaultMandelbrotScale / zoomFactor;
-
+        // Calculate exponential zoom factor
+        const normalizedValue = (value - 1) / 99; // Normalize to 0-1
+        const exponent = normalizedValue * Math.log10(MIN_SCALE / MAX_SCALE);
+        const zoomScale = MAX_SCALE * Math.pow(10, exponent);
+        
+        // Set target scale with the exponential mapping
+        targetMandelbrotScale = zoomScale;
+        
         // Center on currentC when zooming in
         targetMandelbrotCenter = { x: currentC.x, y: currentC.y };
     }
@@ -575,9 +583,19 @@ window.addEventListener('DOMContentLoaded', async () => {
     const mandelbrotZoomSlider = document.getElementById('mandelbrotZoom');
     const mandelbrotZoomValueSpan = document.getElementById('mandelbrotZoomValue');
 
+    // Update zoom slider configuration
+    mandelbrotZoomSlider.min = "1";
+    mandelbrotZoomSlider.max = "100";
+    mandelbrotZoomSlider.step = "0.1"; // Add finer control
+
     mandelbrotZoomSlider.addEventListener('input', () => {
-        const zoomValue = parseInt(mandelbrotZoomSlider.value);
-        mandelbrotZoomValueSpan.textContent = zoomValue.toFixed(2);
+        const zoomValue = parseFloat(mandelbrotZoomSlider.value);
+        const normalizedValue = (zoomValue - 1) / 99;
+        const exponent = normalizedValue * Math.log10(MIN_SCALE / MAX_SCALE);
+        const actualScale = MAX_SCALE * Math.pow(10, exponent);
+        
+        // Display the actual zoom level in scientific notation
+        mandelbrotZoomValueSpan.textContent = actualScale.toExponential(2);
 
         updateZoom(zoomValue, sharedState);
     });
