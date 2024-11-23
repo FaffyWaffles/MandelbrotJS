@@ -161,34 +161,34 @@ function calculateOrbit(x0, y0, maxIter) {
     return orbit;
 }
 
+// Refactored toCanvasCoords function
+function toCanvasCoords(point, width, height, mandelbrotCenter, mandelbrotScale, aspectRatio) {
+    return {
+        x: ((point.x - mandelbrotCenter.x) / (mandelbrotScale * aspectRatio)) * (width / 2) + (width / 2),
+        y: ((mandelbrotCenter.y - point.y) / mandelbrotScale) * (height / 2) + (height / 2),
+    };
+}
+
 function drawOrbit(ctx, orbit, width, height) {
     ctx.clearRect(0, 0, width, height); // Clear the canvas
-
-    // Reuse the corrected toCanvasCoords function
-    function toCanvasCoords(point) {
-        return {
-            x: ((point.x - mandelbrotCenter.x) / (mandelbrotScale * aspectRatio)) * (width / 2) + (width / 2),
-            y: ((mandelbrotCenter.y - point.y) / mandelbrotScale) * (height / 2) + (height / 2)
-        };
-    }
 
     // Draw connecting lines for the orbit
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)'; // Yellow for orbit path
     ctx.lineWidth = 2;
 
-    const start = toCanvasCoords(orbit[0]);
+    const start = toCanvasCoords(orbit[0], width, height, mandelbrotCenter, mandelbrotScale, aspectRatio);
     ctx.moveTo(start.x, start.y);
 
     for (let i = 1; i < orbit.length; i++) {
-        const point = toCanvasCoords(orbit[i]);
+        const point = toCanvasCoords(orbit[i], width, height, mandelbrotCenter, mandelbrotScale, aspectRatio);
         ctx.lineTo(point.x, point.y);
     }
     ctx.stroke();
 
     // Draw the points along the orbit path
     for (let i = 0; i < orbit.length; i++) {
-        const point = toCanvasCoords(orbit[i]);
+        const point = toCanvasCoords(orbit[i], width, height, mandelbrotCenter, mandelbrotScale, aspectRatio);
 
         ctx.beginPath();
         ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
@@ -199,8 +199,8 @@ function drawOrbit(ctx, orbit, width, height) {
         ctx.stroke();
     }
 
-    // === Draw the red circle marker for the current point ===
-    const markerPoint = toCanvasCoords(currentC);
+    // Draw the red circle marker for the current point
+    const markerPoint = toCanvasCoords(currentC, width, height, mandelbrotCenter, mandelbrotScale, aspectRatio);
     ctx.beginPath();
     ctx.arc(markerPoint.x, markerPoint.y, 5, 0, 2 * Math.PI);
     ctx.strokeStyle = 'red';
@@ -208,20 +208,19 @@ function drawOrbit(ctx, orbit, width, height) {
     ctx.stroke();
 }
 
-
-// // Function to draw markers
 function drawMarker(markerCanvas, c) {
     const ctx = markerCanvas.getContext('2d');
     ctx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
 
-    function toCanvasCoords(point, width, height) {
-        return {
-            x: ((point.x - mandelbrotCenter.x) / (mandelbrotScale * aspectRatio)) * (width / 2) + (width / 2),
-            y: ((mandelbrotCenter.y - point.y) / mandelbrotScale) * (height / 2) + (height / 2)
-        };
-    }
+    const canvasCoords = toCanvasCoords(
+        c,
+        markerCanvas.width,
+        markerCanvas.height,
+        mandelbrotCenter,
+        mandelbrotScale,
+        aspectRatio
+    );
 
-    const canvasCoords = toCanvasCoords(c, markerCanvas.width, markerCanvas.height);
     const x = canvasCoords.x;
     const y = canvasCoords.y;
 
@@ -246,7 +245,6 @@ function drawMarker(markerCanvas, c) {
         drawOrbit(ctx, orbit, markerCanvas.width, markerCanvas.height);
     }
 }
-
 
 // Function to initialize WebGPU
 async function initWebGPU(canvas) {
@@ -296,83 +294,6 @@ function updateC(newC, sharedState) {
 
     document.getElementById('cReal').textContent = currentC.x.toFixed(2);
     document.getElementById('cImag').textContent = currentC.y.toFixed(2);
-}
-
-// Function to smoothly interpolate between current and target values
-function interpolate(current, target, speed) {
-    if (current < target) {
-        return Math.min(current + speed, target);
-    } else {
-        return Math.max(current - speed, target);
-    }
-}
-
-// Function to handle zoom animation
-function animateZoom(sharedState) {
-    let needsRender = false;
-
-    // Interpolate scale
-    if (Math.abs(mandelbrotScale - targetMandelbrotScale) > 0.0001) {
-        mandelbrotScale = interpolate(mandelbrotScale, targetMandelbrotScale, zoomSpeed * mandelbrotScale);
-        needsRender = true;
-    }
-
-    // Interpolate center.x
-    if (Math.abs(mandelbrotCenter.x - targetMandelbrotCenter.x) > 0.0001) {
-        mandelbrotCenter.x = interpolate(mandelbrotCenter.x, targetMandelbrotCenter.x, zoomSpeed * Math.abs(mandelbrotCenter.x - targetMandelbrotCenter.x));
-        needsRender = true;
-    }
-
-    // Interpolate center.y
-    if (Math.abs(mandelbrotCenter.y - targetMandelbrotCenter.y) > 0.0001) {
-        mandelbrotCenter.y = interpolate(mandelbrotCenter.y, targetMandelbrotCenter.y, zoomSpeed * Math.abs(mandelbrotCenter.y - targetMandelbrotCenter.y));
-        needsRender = true;
-    }
-
-    if (needsRender && sharedState.mandelbrotBuffers && sharedState.mandelbrotRender) {
-        // Update buffers
-        sharedState.mandelbrotDevice.queue.writeBuffer(
-            sharedState.mandelbrotBuffers.mandelbrotScaleBuffer,
-            0,
-            new Float32Array([mandelbrotScale])
-        );
-
-        sharedState.mandelbrotDevice.queue.writeBuffer(
-            sharedState.mandelbrotBuffers.mandelbrotCenterBuffer,
-            0,
-            new Float32Array([mandelbrotCenter.x, mandelbrotCenter.y])
-        );
-
-        // Re-render Mandelbrot
-        sharedState.mandelbrotRender();
-
-        // Redraw marker
-        drawMarker(document.getElementById('mandelbrotMarkerCanvas'), currentC);
-
-        // Continue animation
-        requestAnimationFrame(() => animateZoom(sharedState));
-    }
-}
-
-// Function to update the zoom based on slider
-function updateZoom(value, sharedState) {
-    if (value === 1) {
-        // Reset to default view
-        targetMandelbrotScale = defaultMandelbrotScale;
-        targetMandelbrotCenter = { ...defaultMandelbrotCenter };
-    } else {
-        // Calculate zoom factor
-        const zoomFactor = value; // Slider value from 1 to 100
-
-        // Set target scale (you can adjust the scaling factor as needed)
-        targetMandelbrotScale = defaultMandelbrotScale / zoomFactor;
-
-        // Center on currentC when zooming in
-        targetMandelbrotCenter = { x: currentC.x, y: currentC.y };
-    }
-
-    // Start animation
-    animateZoom(sharedState);
 }
 
 // ==========================
@@ -623,175 +544,6 @@ function updateZoom(value, sharedState) {
 
     // Start animation
     animateZoom(sharedState);
-}
-
-// ==========================
-// Fractal Drawing Function
-// ==========================
-
-async function drawFractal(canvas, markerCanvas, type, sharedState) {
-    const { device, context, format } = await initWebGPU(canvas);
-
-    const shaderModule = device.createShaderModule({
-        code: shaderCode,
-    });
-
-    const pipeline = device.createRenderPipeline({
-        layout: 'auto',
-        vertex: {
-            module: shaderModule,
-            entryPoint: 'vsMain',
-        },
-        fragment: {
-            module: shaderModule,
-            entryPoint: 'fsMain',
-            targets: [{ format }],
-        },
-        primitive: {
-            topology: 'triangle-list',
-        },
-    });
-
-    // Create uniform buffers
-    const iterationBuffer = device.createBuffer({
-        size: 4,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    const cValueBuffer = device.createBuffer({
-        size: 8,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    const modeBuffer = device.createBuffer({
-        size: 4,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    // Buffers for Mandelbrot zoom
-    const mandelbrotScaleBuffer = device.createBuffer({
-        size: 4,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    const mandelbrotCenterBuffer = device.createBuffer({
-        size: 8,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    // Create bind group
-    const bindGroup = device.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [
-            { binding: 0, resource: { buffer: iterationBuffer } },
-            { binding: 1, resource: { buffer: cValueBuffer } },
-            { binding: 2, resource: { buffer: modeBuffer } },
-            { binding: 3, resource: { buffer: mandelbrotScaleBuffer } },
-            { binding: 4, resource: { buffer: mandelbrotCenterBuffer } },
-        ],
-    });
-
-    // Initialize uniform buffers
-    const initialIterations = 200;
-    device.queue.writeBuffer(iterationBuffer, 0, new Uint32Array([initialIterations]));
-
-    let initialC;
-    let mode;
-    if (type === 'mandelbrot') {
-        initialC = new Float32Array([defaultMandelbrotCenter.x, defaultMandelbrotCenter.y]);
-        mode = 0;
-        // Initialize scale and center
-        device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([mandelbrotScale]));
-        device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([mandelbrotCenter.x, mandelbrotCenter.y]));
-    } else {
-        initialC = new Float32Array([currentC.x, currentC.y]);
-        mode = 1;
-        // For Julia set, scale and center are not used; set to default or placeholder
-        device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([1.5])); // Example scale for Julia
-        device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([0.0, 0.0])); // Example center for Julia
-    }
-    device.queue.writeBuffer(cValueBuffer, 0, initialC);
-    device.queue.writeBuffer(modeBuffer, 0, new Uint32Array([mode]));
-
-    // Render function
-    const render = () => {
-        const commandEncoder = device.createCommandEncoder();
-        const textureView = context.getCurrentTexture().createView();
-
-        const renderPassDescriptor = {
-            colorAttachments: [{
-                view: textureView,
-                clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                loadOp: 'clear',
-                storeOp: 'store',
-            }],
-        };
-
-        const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-        passEncoder.setPipeline(pipeline);
-        passEncoder.setBindGroup(0, bindGroup);
-        passEncoder.draw(6, 1, 0, 0);
-        passEncoder.end();
-
-        device.queue.submit([commandEncoder.finish()]);
-    };
-
-    render();
-
-    if (type === 'julia') {
-        sharedState.juliaBuffers = {
-            iterationBuffer: iterationBuffer,
-            cValueBuffer: cValueBuffer,
-        };
-        sharedState.juliaDevice = device;
-        sharedState.juliaRender = render;
-    } else if (type === 'mandelbrot') {
-        sharedState.mandelbrotBuffers = {
-            iterationBuffer: iterationBuffer,
-            mandelbrotScaleBuffer: mandelbrotScaleBuffer,
-            mandelbrotCenterBuffer: mandelbrotCenterBuffer,
-        };
-        sharedState.mandelbrotDevice = device;
-        sharedState.mandelbrotRender = render;
-    }
-
-    let isDragging = false;
-
-    // Event listeners for interaction
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        let x = (mouseX / canvas.width) * 2 * mandelbrotScale * aspectRatio - mandelbrotScale * aspectRatio + mandelbrotCenter.x;
-        const y = (mouseY / canvas.height) * -2 * mandelbrotScale + mandelbrotScale + mandelbrotCenter.y;
-
-        updateC({ x: x, y: y }, sharedState);
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            let x = (mouseX / canvas.width) * 2 * mandelbrotScale * aspectRatio - mandelbrotScale * aspectRatio + mandelbrotCenter.x;
-            const y = (mouseY / canvas.height) * -2 * mandelbrotScale + mandelbrotScale + mandelbrotCenter.y;
-
-            updateC({ x: x, y: y }, sharedState);
-        }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-        isDragging = false;
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-        isDragging = false;
-    });
-
-    drawMarker(markerCanvas, currentC);
 }
 
 // ==========================
