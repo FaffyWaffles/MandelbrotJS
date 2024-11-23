@@ -19,11 +19,22 @@ const defaultMandelbrotCenter = { x: -0.5, y: 0.0 };
 const MIN_SCALE = 1e-6; // Allow much deeper zoom
 const MAX_SCALE = defaultMandelbrotScale;
 
-// Variables to handle dynamic zoom
+// Default Julia view parameters
+const defaultJuliaScale = 1.5;
+const defaultJuliaCenter = { x: 0.0, y: 0.0 };
+
+// Variables to handle Mandelbrot dynamic zoom
 let mandelbrotScale = defaultMandelbrotScale;
 let mandelbrotCenter = { ...defaultMandelbrotCenter };
 let targetMandelbrotScale = defaultMandelbrotScale;
 let targetMandelbrotCenter = { ...defaultMandelbrotCenter };
+
+// Variables to handle Julia dynamic zoom
+let juliaScale = defaultJuliaScale;
+let juliaCenter = { ...defaultJuliaCenter };
+let targetJuliaScale = defaultJuliaScale;
+let targetJuliaCenter = { ...defaultJuliaCenter };
+
 const zoomSpeed = 0.05; // Adjust for smoother or faster transitions
 
 // ==========================
@@ -58,6 +69,8 @@ fn vsMain(@builtin(vertex_index) VertexIndex: u32) -> VertexOut {
 @group(0) @binding(2) var<uniform> mode: u32;
 @group(0) @binding(3) var<uniform> mandelbrotScale: f32;
 @group(0) @binding(4) var<uniform> mandelbrotCenter: vec2<f32>;
+@group(0) @binding(5) var<uniform> juliaScale: f32;
+@group(0) @binding(6) var<uniform> juliaCenter: vec2<f32>;
 
 fn mod_func(x: f32, y: f32) -> f32 {
     return x - y * floor(x / y);
@@ -67,22 +80,17 @@ fn mod_func(x: f32, y: f32) -> f32 {
 fn fsMain(input: VertexOut) -> @location(0) vec4<f32> {
     var coords = input.fragCoord;
     
-    // Use double precision emulation for critical calculations
-    let scale_f64 = f32(mandelbrotScale);
-    let center_x_f64 = f32(mandelbrotCenter.x);
-    let center_y_f64 = f32(mandelbrotCenter.y);
-    
     var x: f32;
     var y: f32;
 
     if (mode == 0u) {
-        // Mandelbrot Set with higher precision calculations
-        x = (coords.x * scale_f64 * 1.333) + center_x_f64;
-        y = coords.y * scale_f64 + center_y_f64;
+        // Mandelbrot Set with zoom
+        x = (coords.x * mandelbrotScale * 1.333) + mandelbrotCenter.x;
+        y = coords.y * mandelbrotScale + mandelbrotCenter.y;
     } else {
-        // Julia Set
-        x = coords.x * 1.5 * 1.333;
-        y = coords.y * 1.5;
+        // Julia Set with zoom
+        x = (coords.x * juliaScale * 1.333) + juliaCenter.x;
+        y = coords.y * juliaScale + juliaCenter.y;
     }
 
     var z = vec2<f32>(0.0, 0.0);
@@ -172,10 +180,10 @@ function calculateOrbit(x0, y0, maxIter) {
 }
 
 // Function to convert complex coordinates to canvas coordinates
-function toCanvasCoords(point, width, height, mandelbrotCenter, mandelbrotScale, aspectRatio) {
+function toCanvasCoords(point, width, height, center, scale, aspectRatio) {
     return {
-        x: ((point.x - mandelbrotCenter.x) / (mandelbrotScale * aspectRatio)) * (width / 2) + (width / 2),
-        y: ((mandelbrotCenter.y - point.y) / mandelbrotScale) * (height / 2) + (height / 2),
+        x: ((point.x - center.x) / (scale * aspectRatio)) * (width / 2) + (width / 2),
+        y: ((center.y - point.y) / scale) * (height / 2) + (height / 2),
     };
 }
 
@@ -209,7 +217,7 @@ function drawOrbit(ctx, orbit, width, height) {
     }
 }
 
-// Modified update function to handle separate markers
+// Modified marker update function for independent markers
 function updateMarker(newPosition, type, sharedState) {
     // Update the appropriate marker
     markers[type] = { x: newPosition.x, y: newPosition.y };
@@ -232,7 +240,8 @@ function updateMarker(newPosition, type, sharedState) {
     // Draw marker only on the appropriate canvas
     drawMarker(
         document.getElementById(`${type}MarkerCanvas`),
-        markers[type]
+        markers[type],
+        type
     );
 
     // Update coordinate display for either marker
@@ -240,16 +249,19 @@ function updateMarker(newPosition, type, sharedState) {
     document.getElementById('cImag').textContent = newPosition.y.toFixed(6);
 }
 
-function drawMarker(markerCanvas, position) {
+function drawMarker(markerCanvas, position, type) {
     const ctx = markerCanvas.getContext('2d');
     ctx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
+
+    const center = type === 'mandelbrot' ? mandelbrotCenter : juliaCenter;
+    const scale = type === 'mandelbrot' ? mandelbrotScale : juliaScale;
 
     const canvasCoords = toCanvasCoords(
         position,
         markerCanvas.width,
         markerCanvas.height,
-        mandelbrotCenter,
-        mandelbrotScale,
+        center,
+        scale,
         aspectRatio
     );
 
@@ -267,7 +279,7 @@ function drawMarker(markerCanvas, position) {
     const showOrbitsCheckbox = document.getElementById('showOrbits');
     if (showOrbitsCheckbox && 
         showOrbitsCheckbox.checked && 
-        markerCanvas.id === 'mandelbrotMarkerCanvas') {
+        type === 'mandelbrot') {
         const iterations = parseInt(document.getElementById('iterations').value);
         const orbit = calculateOrbit(position.x, position.y, iterations);
         drawOrbit(ctx, orbit, markerCanvas.width, markerCanvas.height);
@@ -356,6 +368,16 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
+    const juliaScaleBuffer = device.createBuffer({
+        size: 4,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    const juliaCenterBuffer = device.createBuffer({
+        size: 8,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
     // Create bind group
     const bindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
@@ -365,6 +387,8 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
             { binding: 2, resource: { buffer: modeBuffer } },
             { binding: 3, resource: { buffer: mandelbrotScaleBuffer } },
             { binding: 4, resource: { buffer: mandelbrotCenterBuffer } },
+            { binding: 5, resource: { buffer: juliaScaleBuffer } },
+            { binding: 6, resource: { buffer: juliaCenterBuffer } },
         ],
     });
 
@@ -379,11 +403,15 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
         mode = 0;
         device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([mandelbrotScale]));
         device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([mandelbrotCenter.x, mandelbrotCenter.y]));
+        device.queue.writeBuffer(juliaScaleBuffer, 0, new Float32Array([0.0]));
+        device.queue.writeBuffer(juliaCenterBuffer, 0, new Float32Array([0.0, 0.0]));
     } else {
         initialC = new Float32Array([markers.mandelbrot.x, markers.mandelbrot.y]);
         mode = 1;
         device.queue.writeBuffer(mandelbrotScaleBuffer, 0, new Float32Array([0.0]));
         device.queue.writeBuffer(mandelbrotCenterBuffer, 0, new Float32Array([0.0, 0.0]));
+        device.queue.writeBuffer(juliaScaleBuffer, 0, new Float32Array([juliaScale]));
+        device.queue.writeBuffer(juliaCenterBuffer, 0, new Float32Array([juliaCenter.x, juliaCenter.y]));
     }
     device.queue.writeBuffer(cValueBuffer, 0, initialC);
     device.queue.writeBuffer(modeBuffer, 0, new Uint32Array([mode]));
@@ -413,19 +441,21 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
 
     render();
 
-    // Store buffers and render function in shared state
+    // Store state in shared object
     if (type === 'julia') {
         sharedState.juliaBuffers = {
-            iterationBuffer: iterationBuffer,
-            cValueBuffer: cValueBuffer,
+            iterationBuffer,
+            cValueBuffer,
+            juliaScaleBuffer,
+            juliaCenterBuffer
         };
         sharedState.juliaDevice = device;
         sharedState.juliaRender = render;
     } else if (type === 'mandelbrot') {
         sharedState.mandelbrotBuffers = {
-            iterationBuffer: iterationBuffer,
-            mandelbrotScaleBuffer: mandelbrotScaleBuffer,
-            mandelbrotCenterBuffer: mandelbrotCenterBuffer,
+            iterationBuffer,
+            mandelbrotScaleBuffer,
+            mandelbrotCenterBuffer
         };
         sharedState.mandelbrotDevice = device;
         sharedState.mandelbrotRender = render;
@@ -440,10 +470,13 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        let x = (mouseX / canvas.width) * 2 * mandelbrotScale * aspectRatio - 
-                mandelbrotScale * aspectRatio + mandelbrotCenter.x;
-        const y = (mouseY / canvas.height) * -2 * mandelbrotScale + 
-                 mandelbrotScale + mandelbrotCenter.y;
+        const scale = type === 'mandelbrot' ? mandelbrotScale : juliaScale;
+        const center = type === 'mandelbrot' ? mandelbrotCenter : juliaCenter;
+
+        let x = (mouseX / canvas.width) * 2 * scale * aspectRatio - 
+                scale * aspectRatio + center.x;
+        const y = (mouseY / canvas.height) * -2 * scale + 
+                 scale + center.y;
 
         updateMarker({ x, y }, type, sharedState);
     });
@@ -454,10 +487,13 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            let x = (mouseX / canvas.width) * 2 * mandelbrotScale * aspectRatio - 
-                    mandelbrotScale * aspectRatio + mandelbrotCenter.x;
-            const y = (mouseY / canvas.height) * -2 * mandelbrotScale + 
-                     mandelbrotScale + mandelbrotCenter.y;
+            const scale = type === 'mandelbrot' ? mandelbrotScale : juliaScale;
+            const center = type === 'mandelbrot' ? mandelbrotCenter : juliaCenter;
+
+            let x = (mouseX / canvas.width) * 2 * scale * aspectRatio - 
+                    scale * aspectRatio + center.x;
+            const y = (mouseY / canvas.height) * -2 * scale + 
+                     scale + center.y;
 
             updateMarker({ x, y }, type, sharedState);
         }
@@ -472,7 +508,7 @@ async function drawFractal(canvas, markerCanvas, type, sharedState) {
     });
 
     // Initialize marker
-    drawMarker(markerCanvas, markers[type]);
+    drawMarker(markerCanvas, markers[type], type);
 }
 
 // ==========================
@@ -487,7 +523,7 @@ function interpolate(current, target, speed) {
     }
 }
 
-function animateZoom(sharedState) {
+function animateMandelbrotZoom(sharedState) {
     let needsRender = false;
 
     // Interpolate scale
@@ -530,15 +566,62 @@ function animateZoom(sharedState) {
         );
 
         sharedState.mandelbrotRender();
+        drawMarker(document.getElementById('mandelbrotMarkerCanvas'), markers.mandelbrot, 'mandelbrot');
 
-        // Redraw only Mandelbrot marker
-        drawMarker(document.getElementById('mandelbrotMarkerCanvas'), markers.mandelbrot);
-
-        requestAnimationFrame(() => animateZoom(sharedState));
+        requestAnimationFrame(() => animateMandelbrotZoom(sharedState));
     }
 }
 
-function updateZoom(value, sharedState) {
+function animateJuliaZoom(sharedState) {
+    let needsRender = false;
+
+    // Interpolate scale
+    if (Math.abs(juliaScale - targetJuliaScale) > 0.0001) {
+        juliaScale = interpolate(juliaScale, targetJuliaScale, zoomSpeed * juliaScale);
+        needsRender = true;
+    }
+
+    // Interpolate center.x
+    if (Math.abs(juliaCenter.x - targetJuliaCenter.x) > 0.0001) {
+        juliaCenter.x = interpolate(
+            juliaCenter.x,
+            targetJuliaCenter.x,
+            zoomSpeed * Math.abs(juliaCenter.x - targetJuliaCenter.x)
+        );
+        needsRender = true;
+    }
+
+    // Interpolate center.y
+    if (Math.abs(juliaCenter.y - targetJuliaCenter.y) > 0.0001) {
+        juliaCenter.y = interpolate(
+            juliaCenter.y,
+            targetJuliaCenter.y,
+            zoomSpeed * Math.abs(juliaCenter.y - targetJuliaCenter.y)
+        );
+        needsRender = true;
+    }
+
+    if (needsRender && sharedState.juliaBuffers && sharedState.juliaRender) {
+        sharedState.juliaDevice.queue.writeBuffer(
+            sharedState.juliaBuffers.juliaScaleBuffer,
+            0,
+            new Float32Array([juliaScale])
+        );
+
+        sharedState.juliaDevice.queue.writeBuffer(
+            sharedState.juliaBuffers.juliaCenterBuffer,
+            0,
+            new Float32Array([juliaCenter.x, juliaCenter.y])
+        );
+
+        sharedState.juliaRender();
+        drawMarker(document.getElementById('juliaMarkerCanvas'), markers.julia, 'julia');
+
+        requestAnimationFrame(() => animateJuliaZoom(sharedState));
+    }
+}
+
+function updateMandelbrotZoom(value, sharedState) {
     if (value === 1) {
         targetMandelbrotScale = defaultMandelbrotScale;
         targetMandelbrotCenter = { ...defaultMandelbrotCenter };
@@ -551,7 +634,23 @@ function updateZoom(value, sharedState) {
         targetMandelbrotCenter = { x: markers.mandelbrot.x, y: markers.mandelbrot.y };
     }
 
-    animateZoom(sharedState);
+    animateMandelbrotZoom(sharedState);
+}
+
+function updateJuliaZoom(value, sharedState) {
+    if (value === 1) {
+        targetJuliaScale = defaultJuliaScale;
+        targetJuliaCenter = { ...defaultJuliaCenter };
+    } else {
+        const normalizedValue = (value - 1) / 99;
+        const exponent = normalizedValue * Math.log10(MIN_SCALE / MAX_SCALE);
+        const zoomScale = MAX_SCALE * Math.pow(10, exponent);
+        
+        targetJuliaScale = zoomScale;
+        targetJuliaCenter = { x: markers.julia.x, y: markers.julia.y };
+    }
+
+    animateJuliaZoom(sharedState);
 }
 
 // ==========================
@@ -580,11 +679,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const showOrbitsCheckbox = document.getElementById('showOrbits');
     const mandelbrotZoomSlider = document.getElementById('mandelbrotZoom');
     const mandelbrotZoomValueSpan = document.getElementById('mandelbrotZoomValue');
+    const juliaZoomSlider = document.getElementById('juliaZoom');
+    const juliaZoomValueSpan = document.getElementById('juliaZoomValue');
 
-    mandelbrotZoomSlider.min = "1";
-    mandelbrotZoomSlider.max = "100";
-    mandelbrotZoomSlider.step = "0.1";
-
+    // Initialize Mandelbrot zoom slider
     mandelbrotZoomSlider.addEventListener('input', () => {
         const zoomValue = parseFloat(mandelbrotZoomSlider.value);
         const normalizedValue = (zoomValue - 1) / 99;
@@ -592,9 +690,21 @@ window.addEventListener('DOMContentLoaded', async () => {
         const actualScale = MAX_SCALE * Math.pow(10, exponent);
         
         mandelbrotZoomValueSpan.textContent = actualScale.toExponential(2);
-        updateZoom(zoomValue, sharedState);
+        updateMandelbrotZoom(zoomValue, sharedState);
     });
 
+    // Initialize Julia zoom slider
+    juliaZoomSlider.addEventListener('input', () => {
+        const zoomValue = parseFloat(juliaZoomSlider.value);
+        const normalizedValue = (zoomValue - 1) / 99;
+        const exponent = normalizedValue * Math.log10(MIN_SCALE / MAX_SCALE);
+        const actualScale = MAX_SCALE * Math.pow(10, exponent);
+        
+        juliaZoomValueSpan.textContent = actualScale.toExponential(2);
+        updateJuliaZoom(zoomValue, sharedState);
+    });
+
+    // Initialize iterations slider
     iterationsSlider.addEventListener('input', () => {
         const iterations = parseInt(iterationsSlider.value);
         iterationValueSpan.textContent = iterations;
@@ -629,6 +739,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Initialize orbit checkbox
     if (showOrbitsCheckbox) {
         showOrbitsCheckbox.addEventListener('change', (e) => {
             const mandelbrotMarkerCanvas = document.getElementById('mandelbrotMarkerCanvas');
@@ -636,7 +747,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             if (!e.target.checked) {
                 ctx.clearRect(0, 0, mandelbrotMarkerCanvas.width, mandelbrotMarkerCanvas.height);
-                drawMarker(mandelbrotMarkerCanvas, markers.mandelbrot);
+                drawMarker(mandelbrotMarkerCanvas, markers.mandelbrot, 'mandelbrot');
             } else {
                 const orbit = calculateOrbit(
                     markers.mandelbrot.x,
@@ -648,5 +759,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Initialize zoom value displays
     mandelbrotZoomValueSpan.textContent = mandelbrotZoomSlider.value;
+    juliaZoomValueSpan.textContent = juliaZoomSlider.value;
 });
